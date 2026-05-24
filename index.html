@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PitWall — iRacing Stint Calculator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="logo">
+          <span class="logo-pw">PIT</span><span class="logo-wall">WALL</span>
+        </div>
+        <nav class="nav" id="main-nav">
+          <button class="nav-btn active" data-page="races">Races</button>
+          <button class="nav-btn" data-page="setup" id="nav-setup" disabled>Setup</button>
+          <button class="nav-btn" data-page="strategy" id="nav-strategy" disabled>Strategy</button>
+          <button class="nav-btn" data-page="live" id="nav-live" disabled>Live</button>
+        </nav>
+      </div>
+      <div class="topbar-right">
+        <div class="connection-status" id="connection-status">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="status-label">Not connected</span>
+        </div>
+        <button class="btn-icon" id="settings-btn" title="Google Sheets settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="page-container" id="page-container">
+      <!-- Pages injected here by JS -->
+    </main>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="settings-modal" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Google Sheets connection</h2>
+        <button class="btn-icon modal-close" id="settings-close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">Your data lives in a Google Sheet that all teammates can access. Paste your Sheet ID and API key below.</p>
+        <div class="field-group">
+          <label class="field-label">Google Sheet ID</label>
+          <input type="text" class="field-input" id="sheet-id-input" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms">
+          <span class="field-hint">Found in your Sheet URL: docs.google.com/spreadsheets/d/<strong>[ID]</strong>/edit</span>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Google API Key</label>
+          <input type="password" class="field-input" id="api-key-input" placeholder="AIza...">
+          <span class="field-hint">From Google Cloud Console → APIs → Credentials</span>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" id="settings-cancel">Cancel</button>
+          <button class="btn btn-primary" id="settings-save">Save &amp; test connection</button>
+        </div>
+        <div class="setup-guide">
+          <div class="guide-title">First time? Here's how to set this up:</div>
+          <ol class="guide-steps">
+            <li>Go to <strong>console.cloud.google.com</strong> and create a new project</li>
+            <li>Enable the <strong>Google Sheets API</strong> for that project</li>
+            <li>Go to Credentials → Create → API Key, copy the key</li>
+            <li>Create a new Google Sheet and share it (Anyone with link → Editor)</li>
+            <li>Copy the Sheet ID from the URL and paste both here</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/sheets.js"></script>
+  <script src="js/strategy.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
