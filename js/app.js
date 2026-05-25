@@ -280,19 +280,29 @@ const App = (() => {
                 <input type="number" class="field-input" id="nr-duration" placeholder="360" min="1">
               </div>
               <div class="field-group">
-                <label class="field-label">Total laps</label>
-                <input type="number" class="field-input" id="nr-laps" placeholder="200" min="1">
+                <label class="field-label">Avg lap time</label>
+                <input type="text" class="field-input" id="nr-laptime" placeholder="1:52.4">
+                <span class="field-hint">M:SS or seconds — estimates total laps</span>
               </div>
             </div>
             <div class="field-row">
               <div class="field-group">
-                <label class="field-label">Race date</label>
-                <input type="date" class="field-input" id="nr-date">
+                <label class="field-label">Total laps <span class="text-dim">— or leave blank to estimate</span></label>
+                <input type="number" class="field-input" id="nr-laps" placeholder="200" min="1">
+                <div class="burn-result" id="nr-laps-estimate" style="display:none">
+                  <span class="burn-result-val" id="nr-laps-est-val"></span>
+                  <span class="burn-result-lbl">estimated laps</span>
+                </div>
               </div>
               <div class="field-group">
                 <label class="field-label">Tank capacity (L)</label>
                 <input type="number" class="field-input" id="nr-tank" placeholder="120" min="1" step="0.1">
               </div>
+            </div>
+            <div class="field-group">
+              <label class="field-label">Green flag time (real world)</label>
+              <input type="datetime-local" class="field-input" id="nr-date">
+              <span class="field-hint">Used to show wall-clock time per stint (morning / afternoon / night)</span>
             </div>
             <div class="modal-actions">
               <button class="btn btn-secondary" id="new-race-cancel">Cancel</button>
@@ -308,18 +318,39 @@ const App = (() => {
     document.getElementById('new-race-close').addEventListener('click', close);
     document.getElementById('new-race-cancel').addEventListener('click', close);
     modal.addEventListener('click', e => { if (e.target === modal) close(); });
+    // Live lap estimate from duration + lap time
+    const estimateLaps = () => {
+      const dur = Number(document.getElementById('nr-duration').value);
+      const lt = parseLapTime(document.getElementById('nr-laptime').value);
+      const manual = Number(document.getElementById('nr-laps').value);
+      const est = document.getElementById('nr-laps-estimate');
+      if (!manual && dur > 0 && lt > 0) {
+        document.getElementById('nr-laps-est-val').textContent = Math.floor(dur * 60 / lt);
+        est.style.display = 'flex';
+      } else {
+        est.style.display = 'none';
+      }
+    };
+    document.getElementById('nr-duration').addEventListener('input', estimateLaps);
+    document.getElementById('nr-laptime').addEventListener('input', estimateLaps);
+    document.getElementById('nr-laps').addEventListener('input', estimateLaps);
+
     document.getElementById('new-race-create').addEventListener('click', async () => {
       const name = document.getElementById('nr-name').value.trim();
       const durationMins = Number(document.getElementById('nr-duration').value);
-      const totalLaps = Number(document.getElementById('nr-laps').value);
+      const avgLapSecs = parseLapTime(document.getElementById('nr-laptime').value);
+      let totalLaps = Number(document.getElementById('nr-laps').value);
+      if (!totalLaps && durationMins && avgLapSecs) {
+        totalLaps = Math.floor(durationMins * 60 / avgLapSecs);
+      }
       const date = document.getElementById('nr-date').value;
       const tankCapacity = Number(document.getElementById('nr-tank').value);
       if (!name) { toast('Enter a race name', 'error'); return; }
-      if (!totalLaps) { toast('Enter total laps', 'error'); return; }
+      if (!totalLaps) { toast('Enter total laps or duration + lap time to estimate', 'error'); return; }
       if (!tankCapacity) { toast('Enter tank capacity', 'error'); return; }
       const race = {
         id: 'race_' + Date.now(),
-        name, date, durationMins, totalLaps, tankCapacity,
+        name, date, durationMins, totalLaps, tankCapacity, avgLapSecs,
         driverCount: 4, status: 'setup',
       };
       state.races.unshift(race);
@@ -617,6 +648,7 @@ const App = (() => {
 
     const { safe, base, risky } = state.scenarios;
     const active = state.scenarios[state.activeScenario];
+    const showTime = !!(state.activeRace.avgLapSecs && state.activeRace.date?.includes('T'));
 
     container.innerHTML = `
       <div class="page-header">
@@ -635,6 +667,31 @@ const App = (() => {
         ${renderComparisonCard('safe', safe, cfg.burnRate)}
         ${renderComparisonCard('base', base, cfg.burnRate)}
         ${renderComparisonCard('risky', risky, cfg.burnRate)}
+      </div>
+
+      <!-- Custom scenario calculator -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Custom scenario</div>
+        <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">
+          <div class="field-group" style="margin:0;min-width:180px">
+            <label class="field-label">Burn rate (L/lap)</label>
+            <input type="number" class="field-input" id="custom-burn-input" placeholder="${cfg.burnRate}" step="0.01" min="0.1" style="max-width:160px">
+          </div>
+          <div id="custom-burn-results" style="display:none;gap:16px;align-items:center;flex-wrap:wrap">
+            <div class="stat-box">
+              <div class="stat-box-val" id="c-stops">—</div>
+              <div class="stat-box-lbl">Pit stops</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-box-val" id="c-laps-tank">—</div>
+              <div class="stat-box-lbl">Laps/tank</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-box-val" id="c-total-fuel">—</div>
+              <div class="stat-box-lbl">Total fuel</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Active scenario detail -->
@@ -661,7 +718,7 @@ const App = (() => {
       <div class="card">
         <div class="card-title">
           Stint schedule
-          <span class="tag tag-info" style="margin-left:8px">${state.activeScenario === 'safe' ? '−5% burn' : state.activeScenario === 'risky' ? '+5% burn' : 'Base rate'}</span>
+          <span class="tag tag-info" style="margin-left:8px">${state.activeScenario === 'safe' ? '+5% burn' : state.activeScenario === 'risky' ? '−5% burn' : 'Base rate'}</span>
           <span class="text-dim" style="font-size:11px;margin-left:8px">${active.burnRate} L/lap</span>
         </div>
         <div style="overflow-x:auto">
@@ -672,19 +729,20 @@ const App = (() => {
                 <th>Driver</th>
                 <th>Laps</th>
                 <th>Lap range</th>
+                ${showTime ? '<th>Time</th>' : ''}
                 <th>Fuel to add</th>
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              ${active.stints.map(s => renderStintRow(s, state.activeRace.tankCapacity)).join('')}
+              ${active.stints.map(s => renderStintRow(s, state.activeRace.tankCapacity, showTime ? { avgLapSecs: state.activeRace.avgLapSecs, greenFlagISO: state.activeRace.date } : null)).join('')}
             </tbody>
           </table>
         </div>
         <div class="tolerance-note">
           Strategy shown for ${active.burnRate} L/lap. Tested rate was ${cfg.burnRate} L/lap.
-          ${state.activeScenario === 'safe' ? 'Safe scenario assumes 5% lower consumption.' : ''}
-          ${state.activeScenario === 'risky' ? 'Risky scenario assumes 5% higher consumption — plan a contingency stop.' : ''}
+          ${state.activeScenario === 'safe' ? 'Safe: planning for +5% burn means you always have enough fuel — never runs dry.' : ''}
+          ${state.activeScenario === 'risky' ? 'Risky: planning for −5% burn means fewer stops, but you may run dry if that fuel saving doesn\'t materialize.' : ''}
         </div>
       </div>
     `;
@@ -697,15 +755,36 @@ const App = (() => {
         renderStrategyPage(container);
       });
     });
+
+    // Custom burn rate calculator
+    document.getElementById('custom-burn-input')?.addEventListener('input', e => {
+      const burn = Number(e.target.value);
+      const results = document.getElementById('custom-burn-results');
+      if (burn > 0) {
+        const s = Strategy.calcStints({
+          totalLaps: state.activeRace.totalLaps,
+          tankCapacity: state.activeRace.tankCapacity,
+          drivers: cfg.drivers || [],
+        }, burn);
+        if (s) {
+          document.getElementById('c-stops').textContent = s.stops;
+          document.getElementById('c-laps-tank').textContent = s.maxLapsPerTank;
+          document.getElementById('c-total-fuel').textContent = s.totalFuelNeeded + 'L';
+          results.style.display = 'flex';
+        }
+      } else {
+        results.style.display = 'none';
+      }
+    });
   }
 
   function renderComparisonCard(type, scenario, baseRate) {
     if (!scenario) return '';
-    const labels = { safe: 'Safe (−5%)', base: 'Base rate', risky: 'Risky (+5%)' };
+    const labels = { safe: 'Safe (+5%)', base: 'Base rate', risky: 'Risky (−5%)' };
     const desc = {
       safe: `${scenario.burnRate} L/lap · ${scenario.maxLapsPerTank} laps/tank`,
       base: `${scenario.burnRate} L/lap · ${scenario.maxLapsPerTank} laps/tank`,
-      risky: `${scenario.burnRate} L/lap · consider +1 stop`,
+      risky: `${scenario.burnRate} L/lap · risk running dry`,
     };
     const isActive = state.activeScenario === type;
     return `
@@ -720,13 +799,16 @@ const App = (() => {
     `;
   }
 
-  function renderStintRow(s, tankCapacity) {
+  function renderStintRow(s, tankCapacity, raceCtx) {
     const color = Strategy.driverColor(s.driverIndex);
     const fuelPct = tankCapacity ? (s.fuelNeeded / tankCapacity) * 100 : 0;
     let badge = '';
     if (s.stintNum === 1) badge = `<span class="pit-badge start">Start</span>`;
     else if (s.isLast) badge = `<span class="pit-badge finish">Finish</span>`;
     else badge = `<span class="pit-badge pit">Pit in</span>`;
+
+    const timeInfo = raceCtx ? stintWallTime(s.startLap, raceCtx.avgLapSecs, raceCtx.greenFlagISO) : null;
+    const periodColors = { Morning: '#f59e0b', Afternoon: '#22c55e', Evening: '#f97316', Night: '#6366f1' };
 
     return `
       <tr>
@@ -739,6 +821,11 @@ const App = (() => {
         </td>
         <td class="mono">${s.laps}</td>
         <td class="mono text-muted">${s.startLap}–${s.endLap}</td>
+        ${timeInfo ? `
+        <td>
+          <span class="mono" style="font-size:12px">${timeInfo.timeStr}</span>
+          <span style="font-size:10px;color:${periodColors[timeInfo.period]};margin-left:4px">${timeInfo.period}</span>
+        </td>` : ''}
         <td>
           ${s.isPit ? `
             <div class="fuel-bar-wrap">
@@ -903,22 +990,35 @@ const App = (() => {
           </div>
           <div class="modal-body">
             <div class="pit-form">
-              <div class="field-group">
-                <label class="field-label">Lap number (when you pit)</label>
-                <input type="number" class="field-input" id="pit-lap" placeholder="${nextStint?.endLap || ''}" min="1" max="${state.activeRace.totalLaps}">
+              <div class="field-row" style="gap:12px">
+                <div class="field-group" style="margin-bottom:0">
+                  <label class="field-label">Lap number (when you pit)</label>
+                  <input type="number" class="field-input" id="pit-lap" placeholder="${nextStint?.endLap || ''}" min="1" max="${state.activeRace.totalLaps}">
+                </div>
+                <div class="field-group" style="margin-bottom:0">
+                  <label class="field-label">Driver getting in</label>
+                  <select class="field-input field-select" id="pit-driver">
+                    ${drivers.map(d => `<option value="${escHtml(d.name)}" ${d.name === defaultDriver ? 'selected' : ''}>${escHtml(d.name)}</option>`).join('')}
+                  </select>
+                </div>
+              </div>
+              <div class="field-row" style="gap:12px">
+                <div class="field-group" style="margin-bottom:0">
+                  <label class="field-label">Fuel remaining when you pit (L)</label>
+                  <input type="number" class="field-input" id="pit-fuel-remaining" placeholder="4.2" step="0.1" min="0">
+                  <span class="field-hint">From iRacing MFD — auto-calculates burn rate</span>
+                </div>
+                <div class="field-group" style="margin-bottom:0">
+                  <label class="field-label">Fuel added (L)</label>
+                  <input type="number" class="field-input" id="pit-fuel" value="${defaultFuel}" placeholder="${defaultFuel}" step="0.1" min="0">
+                </div>
+              </div>
+              <div class="burn-result" id="pit-burn-result" style="display:none">
+                <span class="burn-result-val" id="pit-burn-val"></span>
+                <span class="burn-result-lbl">L/lap actual burn this stint</span>
               </div>
               <div class="field-group">
-                <label class="field-label">Driver getting in</label>
-                <select class="field-input field-select" id="pit-driver">
-                  ${drivers.map(d => `<option value="${escHtml(d.name)}" ${d.name === defaultDriver ? 'selected' : ''}>${escHtml(d.name)}</option>`).join('')}
-                </select>
-              </div>
-              <div class="field-group">
-                <label class="field-label">Fuel added (L)</label>
-                <input type="number" class="field-input" id="pit-fuel" value="${defaultFuel}" placeholder="${defaultFuel}" step="0.1" min="0">
-              </div>
-              <div class="field-group">
-                <label class="field-label">Actual burn rate this stint (L/lap) <span class="text-dim">— optional, updates strategy</span></label>
+                <label class="field-label">Actual burn rate (L/lap) <span class="text-dim">— auto-filled or override</span></label>
                 <input type="number" class="field-input" id="pit-actual-burn" placeholder="${cfg.burnRate}" step="0.01" min="0">
               </div>
             </div>
@@ -936,6 +1036,33 @@ const App = (() => {
     document.getElementById('pit-modal-close').addEventListener('click', close);
     document.getElementById('pit-cancel').addEventListener('click', close);
     modal.addEventListener('click', e => { if (e.target === modal) close(); });
+
+    // Auto-calculate burn rate from lap number + fuel remaining
+    const lastPit = pitLog.length > 0 ? pitLog[pitLog.length - 1] : null;
+    const stintStartFuel = lastPit ? lastPit.fuelAdded : (state.activeRace.tankCapacity || 0);
+    const lastPitLap = lastPit ? lastPit.lap : 0;
+    const calcBurnFromRemaining = () => {
+      const lap = Number(document.getElementById('pit-lap').value);
+      const remaining = document.getElementById('pit-fuel-remaining').value;
+      const result = document.getElementById('pit-burn-result');
+      const burnInput = document.getElementById('pit-actual-burn');
+      if (lap > lastPitLap && remaining !== '') {
+        const stintLaps = lap - lastPitLap;
+        const burn = (stintStartFuel - Number(remaining)) / stintLaps;
+        if (burn > 0) {
+          const rounded = Math.round(burn * 100) / 100;
+          document.getElementById('pit-burn-val').textContent = rounded;
+          result.style.display = 'flex';
+          burnInput.value = rounded;
+        } else {
+          result.style.display = 'none';
+        }
+      } else {
+        result.style.display = 'none';
+      }
+    };
+    document.getElementById('pit-lap').addEventListener('input', calcBurnFromRemaining);
+    document.getElementById('pit-fuel-remaining').addEventListener('input', calcBurnFromRemaining);
 
     document.getElementById('pit-confirm').addEventListener('click', async () => {
       const lap = Number(document.getElementById('pit-lap').value);
@@ -970,11 +1097,40 @@ const App = (() => {
     return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  function formatDate(dateStr) {
-    if (!dateStr) return '';
+  function formatDate(s) {
+    if (!s) return '';
     try {
-      return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    } catch { return dateStr; }
+      const d = new Date(s.includes('T') ? s : s + 'T00:00:00');
+      const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      if (s.includes('T') && s.split('T')[1]) {
+        const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        return `${date} · ${time}`;
+      }
+      return date;
+    } catch { return s; }
+  }
+
+  // Parse lap time from "M:SS.s" or plain seconds string
+  function parseLapTime(str) {
+    if (!str) return 0;
+    str = str.trim();
+    if (str.includes(':')) {
+      const [m, s] = str.split(':').map(Number);
+      return m * 60 + (s || 0);
+    }
+    return Number(str) || 0;
+  }
+
+  // Returns { timeStr, period } for a stint starting at startLap given race context
+  function stintWallTime(startLap, avgLapSecs, greenFlagISO) {
+    if (!avgLapSecs || !greenFlagISO || !greenFlagISO.includes('T')) return null;
+    const d = new Date(new Date(greenFlagISO).getTime() + (startLap - 1) * avgLapSecs * 1000);
+    const h = d.getHours();
+    let period = 'Night';
+    if (h >= 6 && h < 12) period = 'Morning';
+    else if (h >= 12 && h < 17) period = 'Afternoon';
+    else if (h >= 17 && h < 21) period = 'Evening';
+    return { timeStr: d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }), period };
   }
 
   return { init };

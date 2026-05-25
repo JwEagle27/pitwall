@@ -82,7 +82,7 @@ const Sheets = (() => {
   async function loadRaces() {
     if (!isConfigured()) return [];
     try {
-      const rows = await read('Races!A2:H');
+      const rows = await read('Races!A2:I');
       return rows.map(r => ({
         id: r[0],
         name: r[1] || '',
@@ -92,6 +92,7 @@ const Sheets = (() => {
         driverCount: Number(r[5]) || 0,
         status: r[6] || 'setup',
         tankCapacity: Number(r[7]) || 0,
+        avgLapSecs: Number(r[8]) || 0,
       }));
     } catch {
       return [];
@@ -103,18 +104,19 @@ const Sheets = (() => {
       race.id, race.name, race.date,
       race.durationMins, race.totalLaps,
       race.driverCount, race.status, race.tankCapacity,
+      race.avgLapSecs || 0,
     ];
     // Try to find existing row and update, else append
     try {
       const rows = await read('Races!A2:A');
       const idx = rows.findIndex(r => r[0] === race.id);
       if (idx >= 0) {
-        await write(`Races!A${idx + 2}:H${idx + 2}`, [row]);
+        await write(`Races!A${idx + 2}:I${idx + 2}`, [row]);
       } else {
-        await append('Races!A:H', [row]);
+        await append('Races!A:I', [row]);
       }
     } catch {
-      await append('Races!A:H', [row]);
+      await append('Races!A:I', [row]);
     }
   }
 
